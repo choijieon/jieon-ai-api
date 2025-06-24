@@ -1,38 +1,43 @@
 import os
+import json
+import numpy as np
 from flask import Flask, request, jsonify
+from dotenv import load_dotenv
 from openai import OpenAI
 from supabase import create_client, Client
-import numpy as np
-import json
-from dotenv import load_dotenv
 
-# Load environment variables
 load_dotenv()
 
+OPENAI_KEY = os.getenv("OPENAI_API_KEY")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-OPENAI_KEY = os.getenv("OPENAI_API_KEY")
 
 client = OpenAI(api_key=OPENAI_KEY)
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 app = Flask(__name__)
 
-conversation_history = []
+@app.route("/", methods=["GET"])
+def home():
+    return "Jieon API is running. Use the /ask endpoint with a POST request to ask questions."
 
 def cosine_similarity(a, b):
     a = np.array(a)
     b = np.array(b)
     return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
 
-def ask_jieon(question):
+@app.route("/ask", methods=["POST"])
+def ask():
+    data = request.get_json()
+    question = data.get("question")
+    chat_history = data.get("chat_history", [])
+
     question_embedding = client.embeddings.create(
         input=question,
         model="text-embedding-3-small"
     ).data[0].embedding
 
-    data = supabase.table("jieon_chunks").select("*").execute()
-    results = data.data
+    results = supabase.table("jieon_chunks").select("*").execute().data
 
     ranked = sorted(
         results,
@@ -42,29 +47,16 @@ def ask_jieon(question):
     top_chunks = [r["content"] for r in ranked[:5]]
 
     context = "\n\n".join(top_chunks)
-    conversation_history.append({"role": "user", "content": question})
-
-    messages = [
-        {"role": "system", "content": "You're an AI who knows Jieon Choi's background. Use context and reasoning."},
-        {"role": "user", "content": f"Context:\n{context}"}
-    ] + conversation_history
+    messages = chat_history + [
+        {"role": "user", "content": f"Use the context below to answer the question. Be thoughtful and infer details if not explicit.\n\nContext:\n{context}\n\nQuestion: {question}\nAnswer:"}
+    ]
 
     response = client.chat.completions.create(
         model="o4-mini",
-        messages=messages
+        messages=messages,
+        temperature=1
     )
-    answer = response.choices[0].message.content
-    conversation_history.append({"role": "assistant", "content": answer})
-    return answer
-
-@app.route("/ask", methods=["POST"])
-def ask():
-    data = request.get_json()
-    question = data.get("question")
-    if not question:
-        return jsonify({"error": "Question is required"}), 400
-    answer = ask_jieon(question)
-    return jsonify({"answer": answer})
+    return jsonify({"response": response.choices[0].message.content})
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
