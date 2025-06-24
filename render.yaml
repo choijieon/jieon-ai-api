@@ -1,0 +1,9 @@
+
+services:
+  - type: web
+    name: jieon-ai-api
+    env: python
+    buildCommand: ""
+    startCommand: "python jieon_api.py"
+    plan: free
+    autoDeploy: true
