@@ -1,0 +1,13 @@
+# Ignore environment file
+jieon_api.env
+
+# Python junk
+__pycache__/
+*.pyc
+
+# Virtual environments
+venv/
+.env
+
+# macOS system files
+.DS_Store
